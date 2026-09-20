@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Exam Preparation AI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
+  h1 { font-size: 1.4rem; }
+  select, input, button, textarea { font-size: 1rem; padding: 8px; margin: 4px 0; }
+  #courseControls, #uploadControls { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  #chat { border: 1px solid #ddd; border-radius: 8px; padding: 16px; min-height: 300px; margin-bottom: 12px; }
+  .msg { margin-bottom: 16px; white-space: pre-wrap; }
+  .msg.user { font-weight: 600; }
+  .sources { font-size: 0.85rem; color: #555; margin-top: 6px; }
+  #askForm { display: flex; gap: 8px; }
+  #askForm input { flex: 1; }
+</style>
+</head>
+<body>
+  <h1>📚 Exam Preparation AI</h1>
+
+  <div id="courseControls">
+    <label>Course:</label>
+    <select id="courseSelect"></select>
+    <input id="newCourseName" placeholder="New course name">
+    <button onclick="createCourse()">Create</button>
+  </div>
+
+  <div id="uploadControls">
+    <input type="file" id="pdfFile" accept="application/pdf">
+    <button onclick="uploadPdf()">Upload PDF</button>
+    <span id="uploadStatus"></span>
+  </div>
+
+  <div id="chat"></div>
+
+  <form id="askForm" onsubmit="return ask(event)">
+    <input id="question" placeholder="Ask a question about the course material..." required>
+    <button type="submit">Ask</button>
+  </form>
+
+<script>
+  // Point this at your deployed API URL when hosting the frontend separately.
+  const API_BASE = "";
+
+  async function refreshCourses() {
+    const res = await fetch(`${API_BASE}/courses`);
+    const courses = await res.json();
+    const sel = document.getElementById("courseSelect");
+    sel.innerHTML = "";
+    for (const c of courses) {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = `${c.name} (${c.documents.length} doc${c.documents.length === 1 ? "" : "s"})`;
+      sel.appendChild(opt);
+    }
+  }
+
+  async function createCourse() {
+    const name = document.getElementById("newCourseName").value.trim();
+    if (!name) return;
+    await fetch(`${API_BASE}/courses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    document.getElementById("newCourseName").value = "";
+    await refreshCourses();
+  }
+
+  async function uploadPdf() {
+    const courseId = document.getElementById("courseSelect").value;
+    const fileInput = document.getElementById("pdfFile");
+    if (!courseId || !fileInput.files.length) return;
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    document.getElementById("uploadStatus").textContent = "Indexing...";
+    const res = await fetch(`${API_BASE}/courses/${courseId}/upload`, { method: "POST", body: formData });
+    const result = await res.json();
+    document.getElementById("uploadStatus").textContent =
+      result.chunks ? `Indexed ${result.chunks} chunks from ${result.filename}` : JSON.stringify(result);
+    await refreshCourses();
+  }
+
+  async function ask(event) {
+    event.preventDefault();
+    const courseId = document.getElementById("courseSelect").value;
+    const question = document.getElementById("question").value.trim();
+    if (!courseId || !question) return false;
+
+    const chat = document.getElementById("chat");
+    chat.innerHTML += `<div class="msg user">🧑 ${question}</div>`;
+    document.getElementById("question").value = "";
+
+    const res = await fetch(`${API_BASE}/courses/${courseId}/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    const data = await res.json();
+
+    const sourcesHtml = (data.sources || [])
+      .map(s => `${s.filename} — p.${s.page}`)
+      .join(" · ");
+
+    chat.innerHTML += `<div class="msg">🤖 ${data.answer}${sourcesHtml ? `<div class="sources">📖 ${sourcesHtml}</div>` : ""}</div>`;
+    chat.scrollTop = chat.scrollHeight;
+    return false;
+  }
+
+  refreshCourses();
+</script>
+</body>
+</html>

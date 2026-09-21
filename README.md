@@ -34,12 +34,12 @@ Student Question → Embed → Similarity Search ──────────�
 
 ## Features
 
-- 📄 **Multi-course support** — organize materials by subject, each with its own isolated index
-- 🔍 **Grounded answers only** — the model is instructed to say "not found in the materials" rather than guess
-- 📌 **Page-level citations** — every answer points back to the exact document and page
-- 💾 **Persistent by design** — indexes survive server restarts; no reprocessing PDFs on every boot
-- 💸 **Zero-cost to run** — no paid APIs, no GPU requirement, deployable on free-tier hosting
-- 🧩 **Swappable LLM backend** — use a free hosted API (Groq) or run fully offline with a local model (Ollama)
+- **Multi-course support** — organize materials by subject, each with its own isolated index
+- **Grounded answers only** — the model is instructed to say "not found in the materials" rather than guess
+- **Page-level citations** — every answer points back to the exact document and page
+- **Persistent by design** — indexes survive server restarts; no reprocessing PDFs on every boot
+- **Zero-cost to run** — no paid APIs, no GPU requirement, deployable on free-tier hosting
+- **Swappable LLM backend** — use a free hosted API (Groq) or run fully offline with a local model (Ollama)
 
 ## Tech stack
 
@@ -93,7 +93,5 @@ The project ships with a `Dockerfile` and deploys cleanly to any container-frien
 ## Lessons learned
 
 Moving this from a Kaggle notebook to a deployed service surfaced problems a notebook never forces you to solve: state that needs to survive a restart, a GPU that won't be there in production, and a memory budget that a free hosting tier enforces whether you planned for it or not. Working through those constraints — like swapping a PyTorch-based embedding model for an ONNX-based one to fit inside a 512MB memory limit — ended up being as much a part of building this as the RAG pipeline itself.
-
-## License
 
 MIT — use it, fork it, learn from it.

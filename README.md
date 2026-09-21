@@ -1,116 +1,99 @@
-# Exam Preparation AI — FastAPI service
+# 📚 OnushilonAI - Exam Preparation RAG Application
 
-Local, free-of-cost port of the Kaggle RAG notebook: upload course PDFs,
-ask questions, get answers grounded in the material with filename + page
-citations.
+A Retrieval-Augmented Generation (RAG) system that turns a pile of course PDFs into an AI study partner — one that actually knows what's in *your* lecture notes and tells you exactly where it found the answer.
 
-## What changed vs. the Kaggle version
+Upload your slides, textbook chapters, or lecture PDFs. Ask a question in plain English. Get back an answer grounded in your own material, with the filename and page number cited — no hallucinated facts, no generic textbook answers pulled from nowhere.
 
-| | Kaggle notebook | This app |
+> Built as a portfolio project to explore practical, production-style RAG architecture — not just a notebook demo, but a real API with persistence, deployment, and cost constraints taken seriously.
+
+---
+
+## Why this exists
+
+Most "chat with your PDF" demos are Jupyter notebooks that die the moment the kernel restarts. This project started as one of those (a Kaggle notebook prototype) and was deliberately rebuilt as a real service: a FastAPI backend with a persistent vector index, a lightweight frontend, and a deployment path that costs nothing to run — because the whole point was to make it usable by actual students, not just impressive in a demo.
+
+## How it works
+
+1. **Ingest** — A course PDF is parsed page-by-page with PyMuPDF, so every extracted chunk of text remembers exactly which page it came from.
+2. **Chunk** — Text is split into overlapping word-windows, small enough for precise retrieval, large enough to preserve context.
+3. **Embed** — Each chunk is converted into a dense vector using a BGE embedding model, run through ONNX Runtime rather than a full PyTorch stack — enough of a memory difference to matter when you're deploying on a free-tier server.
+4. **Index** — Vectors are stored in a FAISS index, saved to disk per course, so nothing needs to be re-processed after a restart.
+5. **Retrieve & Answer** — A student's question is embedded and matched against the index; the most relevant chunks are handed to an LLM with strict instructions to answer *only* from what was retrieved, citing the source page.
+
+```
+PDF Upload → Extract (PyMuPDF) → Chunk → Embed (fastembed/ONNX) → FAISS Index (persisted)
+                                                                          │
+Student Question → Embed → Similarity Search ──────────────────────────┘
+                                    │
+                                    ▼
+                        Retrieved Chunks + Question
+                                    │
+                                    ▼
+                          LLM (Groq API) → Grounded Answer + Page Citations
+```
+
+## Features
+
+- 📄 **Multi-course support** — organize materials by subject, each with its own isolated index
+- 🔍 **Grounded answers only** — the model is instructed to say "not found in the materials" rather than guess
+- 📌 **Page-level citations** — every answer points back to the exact document and page
+- 💾 **Persistent by design** — indexes survive server restarts; no reprocessing PDFs on every boot
+- 💸 **Zero-cost to run** — no paid APIs, no GPU requirement, deployable on free-tier hosting
+- 🧩 **Swappable LLM backend** — use a free hosted API (Groq) or run fully offline with a local model (Ollama)
+
+## Tech stack
+
+| Layer | Choice | Why |
 |---|---|---|
-| LLM | 7B model on a free Kaggle GPU | Groq's free hosted API (or Ollama, fully local) — no GPU needed |
-| State | Lives in notebook memory, lost on restart | FAISS index + chunk metadata saved to disk per course |
-| Interface | Gradio, 72‑hour link | FastAPI + a small static frontend, deploy anywhere |
+| API | FastAPI | Fast to build, automatic docs, async-friendly |
+| PDF parsing | PyMuPDF | Reliable text + page-number extraction |
+| Embeddings | fastembed (BGE, ONNX Runtime) | Same quality as sentence-transformers, a fraction of the memory — no PyTorch required |
+| Vector search | FAISS | Fast, battle-tested, no external database to manage |
+| LLM | Groq API (free tier) / Ollama (local, optional) | Fast inference with zero API cost |
+| Frontend | Vanilla HTML/JS | No build step, easy to swap out |
+| Deployment | Docker → Render | Free hosting, reproducible builds |
 
-## 1. Run it locally
+## Getting started
 
 ```bash
+git clone <your-repo-url>
 cd exam-rag
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env: paste in a free Groq API key (see below)
+# add a free API key from https://console.groq.com into .env
 
 uvicorn app.main:app --reload --port 8000
 ```
 
-Open **http://localhost:8000** for the chat UI, or **http://localhost:8000/docs**
-for the interactive API docs.
+Open `http://localhost:8000` for the web UI, or `http://localhost:8000/docs` for interactive API documentation.
 
-### Getting a free Groq API key
-1. Go to https://console.groq.com and sign up (no credit card).
-2. Create an API key.
-3. Put it in `.env` as `GROQ_API_KEY=...`. The free tier's rate limits are
-   generous enough for a small class of students.
+## API overview
 
-### Alternative: fully local LLM (zero external calls)
-If you'd rather not call any external API at all:
-1. Install [Ollama](https://ollama.com).
-2. `ollama pull qwen2.5:7b-instruct` (or a smaller model if your machine is
-   modest, e.g. `qwen2.5:1.5b-instruct`).
-3. In `.env`, set `LLM_PROVIDER=ollama` and `OLLAMA_MODEL` to match.
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/courses` | Create a new course |
+| `GET` | `/courses` | List all courses |
+| `POST` | `/courses/{id}/upload` | Upload and index a PDF into a course |
+| `POST` | `/courses/{id}/ask` | Ask a question, get a grounded answer with sources |
 
-This runs entirely on whatever machine has Ollama installed — fine for local
-testing or for hosting on your own server with decent RAM, but not realistic
-on most free hosting tiers (no GPU, limited RAM), which is why Groq is the
-default for step 2 below.
+## Deployment
 
-## 2. Use it
+The project ships with a `Dockerfile` and deploys cleanly to any container-friendly free host (Render is the tested path). Set `GROQ_API_KEY` and `GROQ_MODEL` as environment variables on your host, and make sure the app binds to the port your platform provides (see `Dockerfile` for how `$PORT` is handled). Note that free-tier instances typically cap memory around 512MB and spin down after inactivity — both were design constraints while building this, not afterthoughts.
 
-```bash
-# create a course
-curl -X POST localhost:8000/courses -H "Content-Type: application/json" -d '{"name": "Machine Learning"}'
-# -> {"id": "machine-learning-a1b2c3", "name": "Machine Learning"}
+## Roadmap
 
-# upload a PDF
-curl -X POST localhost:8000/courses/machine-learning-a1b2c3/upload -F "file=@notes.pdf"
+- [ ] Cross-encoder re-ranking on top of vector retrieval, for a meaningful accuracy jump
+- [ ] OCR support for scanned PDFs and slide decks with no text layer
+- [ ] A small evaluation set (question → known correct page) to tune retrieval with numbers, not vibes
+- [ ] Basic auth / per-student accounts for real classroom use
 
-# ask a question
-curl -X POST localhost:8000/courses/machine-learning-a1b2c3/ask \
-  -H "Content-Type: application/json" -d '{"question": "What is overfitting?"}'
-```
+## Lessons learned
 
-Or just use the web UI at `/` — create a course, upload a PDF, ask away.
+Moving this from a Kaggle notebook to a deployed service surfaced problems a notebook never forces you to solve: state that needs to survive a restart, a GPU that won't be there in production, and a memory budget that a free hosting tier enforces whether you planned for it or not. Working through those constraints — like swapping a PyTorch-based embedding model for an ONNX-based one to fit inside a 512MB memory limit — ended up being as much a part of building this as the RAG pipeline itself.
 
-## 3. Host it for free — Hugging Face Spaces (recommended)
+## License
 
-Spaces gives you a free public URL, no credit card, using the included
-`Dockerfile`.
-
-1. Create a free account at https://huggingface.co.
-2. **New Space** → pick a name → SDK: **Docker** → hardware: **CPU basic (free)**.
-3. Push this project to the Space's git repo:
-   ```bash
-   git init
-   git remote add space https://huggingface.co/spaces/<your-username>/<space-name>
-   git add .
-   git commit -m "Initial commit"
-   git push space main
-   ```
-4. In the Space's **Settings → Repository secrets**, add `GROQ_API_KEY`
-   (same value as your local `.env`). Do **not** commit your `.env` file —
-   it's already in `.gitignore`.
-5. The Space builds the Dockerfile and gives you a URL like
-   `https://<your-username>-<space-name>.hf.space` — share that with students.
-
-Notes on the free CPU tier:
-- Embeddings run on CPU there too — fine for a course's worth of PDFs
-  (thousands of chunks), just slower than Kaggle's GPU for the initial
-  indexing of a large PDF. Retrieval + LLM answering stays fast either way
-  since the LLM call itself goes to Groq.
-- Free Spaces sleep after a period of inactivity and wake on the next
-  request (a few seconds' delay) — normal for a free tier.
-- The `data/` directory persists across restarts as long as you don't
-  delete/recreate the Space; for anything long-term-critical, Spaces also
-  supports a small persistent disk add-on if you outgrow the default.
-
-### Alternative free hosts
-- **Render** (free web service tier) — same Dockerfile works, deploy via
-  their dashboard connected to a GitHub repo. Free tier also sleeps after
-  inactivity.
-- **Railway** / **Fly.io** — both have small free allowances; same Docker
-  image works unchanged.
-
-## 4. Where to take this next
-
-Same roadmap as the notebook's closing section:
-1. Tune `CHUNK_SIZE_WORDS` / `TOP_K` in `.env` and compare answer quality.
-2. Add a cross-encoder re-ranker (`BAAI/bge-reranker-base`) on top of the
-   bi-encoder retrieval — usually the single biggest quality jump.
-3. Add OCR (`pytesseract`) for scanned PDFs/slide decks with no text layer.
-4. Build a small eval set (question → known correct page) to tune with
-   numbers instead of vibes.
-5. Add basic auth / per-student accounts once you're ready for real usage
-   beyond a demo.
+MIT — use it, fork it, learn from it.

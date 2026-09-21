@@ -56,7 +56,7 @@ Student Question → Embed → Similarity Search ──────────�
 ## Getting started
 
 ```bash
-git clone <your-repo-url>
+git clone your-repo-url](https://github.com/mahabubmamun/OnushilonAI---Exam-Preparation-RAG-Application.git
 cd exam-rag
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
